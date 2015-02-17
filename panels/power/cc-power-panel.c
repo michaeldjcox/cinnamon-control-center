@@ -210,6 +210,8 @@ set_device_battery_primary (CcPowerPanel *panel, GVariant *device)
                  &state,
                  &time);
 
+  int roundPercent = (int)(percentage + 0.5);
+
   /* set the percentage */
   gtk_progress_bar_set_fraction (GTK_PROGRESS_BAR (priv->levelbar_primary),
                            percentage / 100.0f);
@@ -227,24 +229,24 @@ set_device_battery_primary (CcPowerPanel *panel, GVariant *device)
           case UP_DEVICE_STATE_CHARGING:
           case UP_DEVICE_STATE_PENDING_CHARGE:
             /* TRANSLATORS: %1 is a time string, e.g. "1 hour 5 minutes" */
-            details = g_strdup_printf(_("Charging - %s until fully charged"),
-                                      time_string);
+            details = g_strdup_printf(_("Charging - %d%% - %s until fully charged"),
+                                      roundPercent, time_string);
             break;
           case UP_DEVICE_STATE_DISCHARGING:
           case UP_DEVICE_STATE_PENDING_DISCHARGE:
             if (percentage < 20)
               {
                 /* TRANSLATORS: %1 is a time string, e.g. "1 hour 5 minutes" */
-                details = g_strdup_printf(_("Caution low battery, %s remaining"),
-                                          time_string);
+                details = g_strdup_printf(_("Caution low battery - %d%% - %s remaining"),
+                                          roundPercent, time_string);
                 /* show the warning */
                 gtk_widget_show (widget);
               }
             else
               {
                 /* TRANSLATORS: %1 is a time string, e.g. "1 hour 5 minutes" */
-                details = g_strdup_printf(_("Using battery power - %s remaining"),
-                                          time_string);
+                details = g_strdup_printf(_("Using battery power  - %d%% - %s remaining"),
+                                          roundPercent, time_string);
               }
             break;
           default:
@@ -260,12 +262,12 @@ set_device_battery_primary (CcPowerPanel *panel, GVariant *device)
           case UP_DEVICE_STATE_CHARGING:
           case UP_DEVICE_STATE_PENDING_CHARGE:
             /* TRANSLATORS: primary battery */
-            details = g_strdup(_("Charging"));
+            details = g_strdup_printf(_("Charging - %d%%"), roundPercent);
             break;
           case UP_DEVICE_STATE_DISCHARGING:
           case UP_DEVICE_STATE_PENDING_DISCHARGE:
             /* TRANSLATORS: primary battery */
-            details = g_strdup(_("Using battery power"));
+            details = g_strdup_printf(_("Using battery power - %d%%"), roundPercent);
             break;
           case UP_DEVICE_STATE_FULLY_CHARGED:
             /* TRANSLATORS: primary battery */
@@ -277,7 +279,7 @@ set_device_battery_primary (CcPowerPanel *panel, GVariant *device)
             break;
           default:
             details = g_strdup_printf ("error: %s",
-                                       up_device_state_to_string (state));
+            up_device_state_to_string (state));
             break;
         }
     }
@@ -399,6 +401,8 @@ set_device_battery_additional (CcPowerPanel *panel, GVariant *device)
   gchar *details = NULL;
   GtkWidget *widget;
   UpDeviceState state;
+  gdouble percentage;
+  guint64 time;
 
   /* set the device */
   g_variant_get (device,
@@ -406,9 +410,9 @@ set_device_battery_additional (CcPowerPanel *panel, GVariant *device)
                  NULL, /* object_path */
                  NULL, /* kind */
                  NULL, /* icon_name */
-                 NULL, /* percentage */
+                 &percentage, /* percentage */
                  &state,
-                 NULL /* time */);
+                 &time /* time */);
 
   /* set the description */
   switch (state)
@@ -421,6 +425,11 @@ set_device_battery_additional (CcPowerPanel *panel, GVariant *device)
         /* TRANSLATORS: secondary battery is normally in the media bay */
         details = g_strdup(_("Your secondary battery is empty"));
         break;
+      case UP_DEVICE_STATE_DISCHARGING:
+      case UP_DEVICE_STATE_PENDING_DISCHARGE:
+        details = g_strdup_printf(_("Your secondary battery is at %3.0f%%"), percentage);
+        break;
+
       default:
         break;
     }
@@ -450,13 +459,16 @@ add_device_secondary (CcPowerPanel *panel,
   GtkWidget *vbox;
   GtkWidget *hbox;
   GtkWidget *widget;
+  gchar *details;
   GString *status;
   GString *description;
+  gchar *objectPath;
   gboolean show_caution = FALSE;
+  gchar *desc;
 
   g_variant_get (device,
                  "(susdut)",
-                 NULL,
+                 &objectPath,
                  &kind,
                  NULL,
                  &percentage,
@@ -491,8 +503,11 @@ add_device_secondary (CcPowerPanel *panel,
         icon_name = "computer";
         show_caution = TRUE;
         break;
-      default:
+     case UP_DEVICE_KIND_BATTERY:
         icon_name = "battery";
+        break;
+      default:
+        icon_name = "other";
         break;
     }
 
@@ -530,51 +545,47 @@ add_device_secondary (CcPowerPanel *panel,
         /* TRANSLATORS: secondary battery */
         description = g_string_new (_("Computer"));
         break;
+     case UP_DEVICE_KIND_BATTERY:
+        /* TRANSLATORS: secondary battery */
+        desc = g_strrstr(objectPath, "BAT");
+        desc = g_strdup_printf(_("Battery %s"), desc);
+        description = g_string_new(desc);
+        break;
       default:
         /* TRANSLATORS: secondary battery, misc */
-        description = g_string_new (_("Battery"));
+        description = g_string_new (_("Other"));
         break;
     }
   g_string_prepend (description, "<b>");
   g_string_append (description, "</b>");
+
+  int roundPercent = (int)(percentage + 0.5);
 
   switch (state)
     {
       case UP_DEVICE_STATE_CHARGING:
       case UP_DEVICE_STATE_PENDING_CHARGE:
         /* TRANSLATORS: secondary battery */
-        status = g_string_new(C_("Battery power", "Charging"));
+            details = g_strdup_printf(_("Charging - %d%%"), roundPercent);
         break;
       case UP_DEVICE_STATE_DISCHARGING:
       case UP_DEVICE_STATE_PENDING_DISCHARGE:
-        if (percentage < 10 && show_caution)
-          {
-            /* TRANSLATORS: secondary battery */
-            status = g_string_new (C_("Battery power", "Caution"));
-          }
-        else if (percentage < 30)
-          {
-            /* TRANSLATORS: secondary battery */
-            status = g_string_new (C_("Battery power", "Low"));
-          }
-        else
-          {
-            /* TRANSLATORS: secondary battery */
-            status = g_string_new (C_("Battery power", "Good"));
-          }
+            details = g_strdup_printf(_("Battery power - %d%%"), roundPercent);
         break;
       case UP_DEVICE_STATE_FULLY_CHARGED:
         /* TRANSLATORS: primary battery */
-        status = g_string_new(C_("Battery power", "Charging - fully charged"));
+            details = g_strdup_printf(_("Battery power - fully charged"));
         break;
       case UP_DEVICE_STATE_EMPTY:
         /* TRANSLATORS: primary battery */
-        status = g_string_new(C_("Battery power", "Empty"));
+            details = g_strdup_printf(_("Battery power - empty"));
         break;
       default:
-        status = g_string_new (up_device_state_to_string (state));
+        details = up_device_state_to_string (state);
         break;
     }
+
+  status = g_string_new(details);
   g_string_prepend (status, "<small>");
   g_string_append (status, "</small>");
 
@@ -611,6 +622,10 @@ add_device_secondary (CcPowerPanel *panel,
                    1, 1);
   (*secondary_devices_cnt)++;
 
+
+  widget = WID ("box_primary");
+  gtk_widget_show (widget);
+
   /* show panel */
   widget = WID ("box_secondary");
   gtk_widget_show_all (widget);
@@ -618,6 +633,54 @@ add_device_secondary (CcPowerPanel *panel,
   g_string_free (description, TRUE);
   g_string_free (status, TRUE);
 }
+
+static void
+get_primary_device_cb(GObject *source_object, GAsyncResult *res, gpointer user_data) 
+{
+  GVariant *result;
+  UpDeviceKind kind;
+  UpDeviceState state;
+  gdouble percentage;
+  guint64 time;
+  GError *error = NULL;
+  GVariant *untuple;
+  CcPowerPanel *panel;
+
+  result = g_dbus_proxy_call_finish (G_DBUS_PROXY (source_object), res, &error);
+  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+    {
+      g_error_free (error);
+      return; /* Must exit before accessing freed memory */
+    }
+
+  if (result == NULL)
+    {
+      g_printerr ("Error getting primary device: %s\n", error->message);
+      g_error_free (error);
+      return;
+    }
+
+  panel = CC_POWER_PANEL (user_data);
+
+  untuple = g_variant_get_child_value (result, 0);
+
+  g_variant_get (untuple,
+                 "(susdut)",
+                 NULL,
+                 &kind,
+                 NULL,
+                 &percentage,
+                 &state,
+                 &time);
+
+  GString *status = g_string_new (up_device_state_to_string (state));
+  GString *type = g_string_new (up_device_kind_to_string (kind));
+
+  set_device_battery_primary (panel, untuple);
+
+  g_variant_unref (result);
+}
+
 
 static void
 get_devices_cb (GObject *source_object, GAsyncResult *res, gpointer user_data)
@@ -694,6 +757,9 @@ get_devices_cb (GObject *source_object, GAsyncResult *res, gpointer user_data)
       g_variant_unref (child);
     }
 
+  gdouble percentage;
+  guint64 time;
+
   /* add the devices now we know the state-of-play */
   for (i = 0; i < n_devices; i++)
     {
@@ -703,9 +769,12 @@ get_devices_cb (GObject *source_object, GAsyncResult *res, gpointer user_data)
                      NULL,
                      &kind,
                      NULL,
+                     &percentage,
                      NULL,
-                     NULL,
-                     NULL);
+                     &time);
+
+g_printerr ("Device reports: %f%% %d secs\n", percentage, time);
+
       if (kind == UP_DEVICE_KIND_LINE_POWER)
         {
           /* do nothing */
@@ -716,15 +785,7 @@ get_devices_cb (GObject *source_object, GAsyncResult *res, gpointer user_data)
         }
       else if (kind == UP_DEVICE_KIND_BATTERY && !ups_as_primary_device)
         {
-          if (!got_primary)
-            {
-              set_device_battery_primary (panel, child);
-              got_primary = TRUE;
-            }
-          else
-            {
-              set_device_battery_additional (panel, child);
-            }
+          add_device_secondary (panel, child, &secondary_devices_cnt);
         }
       else
         {
@@ -735,6 +796,7 @@ get_devices_cb (GObject *source_object, GAsyncResult *res, gpointer user_data)
 
   g_variant_unref (untuple);
   g_variant_unref (result);
+
 }
 
 static void
@@ -746,7 +808,16 @@ on_properties_changed (GDBusProxy *proxy,
   CcPowerPanelPrivate *priv = CC_POWER_PANEL (user_data)->priv;
 
   /* get the new state */
-  g_dbus_proxy_call (priv->proxy,
+ g_dbus_proxy_call (priv->proxy,
+                     "GetPrimaryDevice",
+                     NULL,
+                     G_DBUS_CALL_FLAGS_NONE,
+                     -1,
+                     priv->cancellable,
+                     get_primary_device_cb,
+                     user_data);
+
+ g_dbus_proxy_call (priv->proxy,
                      "GetDevices",
                      NULL,
                      G_DBUS_CALL_FLAGS_NONE,
@@ -783,6 +854,16 @@ got_power_proxy_cb (GObject *source_object, GAsyncResult *res, gpointer user_dat
                     user_data);
 
   /* get the initial state */
+ g_dbus_proxy_call (priv->proxy,
+                     "GetPrimaryDevice",
+                     NULL,
+                     G_DBUS_CALL_FLAGS_NONE,
+                     200, 
+                     priv->cancellable,
+                     get_primary_device_cb,
+                     user_data); 
+
+  /* get the initial state */
   g_dbus_proxy_call (priv->proxy,
                      "GetDevices",
                      NULL,
@@ -791,6 +872,7 @@ got_power_proxy_cb (GObject *source_object, GAsyncResult *res, gpointer user_dat
                      priv->cancellable,
                      get_devices_cb,
                      user_data);
+
 }
 
 static void
